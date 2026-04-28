@@ -682,3 +682,51 @@ body {
 
 .status-btn:hover { border-color: #378add; color: #378add; }
 .status-btn.active { font-weight: 700; }
+
+.dashboard-page { width: 100%; display: flex; flex-direction: column; gap: 20px; }
+
+.dash-section-block {
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.dash-section-block .chart-card {
+  box-shadow: none;
+  border-color: rgba(0,0,0,0.06);
+  margin-top: 16px;
+}
+
+.dash-section-block .charts-grid { margin-top: 16px; margin-bottom: 0; }
+.dash-section-block .kpi-grid { margin-bottom: 0; }
+
+.kpi-value.blue { color: #378add; }
+.kpi-value.amber { color: #ef9f27; }
+.kpi-value.green { color: #1d9e75; }
+.kpi-value.red { color: #e24b4a; }
+
+.date-filter-group input[type="date"] {
+  background: #f8f9fb;
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: 8px;
+  color: #1a2035;
+  font-size: 12px;
+  padding: 6px 10px;
+  outline: none;
+  width: 150px;
+}
+
+.btn-clear {
+  background: rgba(226,75,74,0.08);
+  border: 1px solid rgba(226,75,74,0.2);
+  border-radius: 6px;
+  color: #e24b4a;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 5px 10px;
+  transition: background 0.2s;
+}
+
+.btn-clear:hover { background: rgba(226,75,74,0.15); }
