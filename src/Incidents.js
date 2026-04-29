@@ -18,6 +18,13 @@ export default function Incidents({ user }) {
   const [workflowStages, setWorkflowStages] = useState([]);
   const [activity, setActivity] = useState([]);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [stageForm, setStageForm] = useState(null);
+  const [stageFormFields, setStageFormFields] = useState([]);
+  const [formResponses, setFormResponses] = useState({});
+  const [existingResponse, setExistingResponse] = useState(null);
+  const [existingFieldResponses, setExistingFieldResponses] = useState([]);
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [formSubmitted, setFormSubmitted] = useState(false);
 
   useEffect(() => {
     fetchIncidents();
@@ -25,14 +32,17 @@ export default function Incidents({ user }) {
   }, []);
 
   useEffect(() => {
-    if (selected) fetchActivity(selected.id);
+    if (selected) {
+      fetchActivity(selected.id);
+      fetchStageForm(selected.current_stage_id);
+    }
   }, [selected]);
 
   async function fetchIncidents() {
     setLoading(true);
     const { data, error } = await supabase
       .from('incidents')
-      .select(`*, workflow_stages (id, name, color, order_index)`)
+      .select(`*, workflow_stages (id, name, color, order_index, form_id)`)
       .order('created_at', { ascending: false });
     if (!error) setIncidents(data);
     setLoading(false);
@@ -57,15 +67,59 @@ export default function Incidents({ user }) {
     setActivityLoading(false);
   }
 
+  async function fetchStageForm(stageId) {
+    setStageForm(null);
+    setStageFormFields([]);
+    setFormResponses({});
+    setExistingResponse(null);
+    setExistingFieldResponses([]);
+    setFormSubmitted(false);
+
+    if (!stageId) return;
+
+    const stage = workflowStages.find(s => s.id === stageId);
+    if (!stage?.form_id) return;
+
+    const { data: form } = await supabase
+      .from('forms')
+      .select('*')
+      .eq('id', stage.form_id)
+      .single();
+
+    const { data: fields } = await supabase
+      .from('form_fields')
+      .select('*')
+      .eq('form_id', stage.form_id)
+      .order('order_index');
+
+    if (form) setStageForm(form);
+    if (fields) setStageFormFields(fields);
+
+    if (selected) {
+      const { data: response } = await supabase
+        .from('form_responses')
+        .select('*')
+        .eq('incident_id', selected.id)
+        .eq('form_id', stage.form_id)
+        .single();
+
+      if (response) {
+        setExistingResponse(response);
+        setFormSubmitted(true);
+        const { data: fieldResponses } = await supabase
+          .from('form_field_responses')
+          .select('*')
+          .eq('response_id', response.id);
+        if (fieldResponses) setExistingFieldResponses(fieldResponses);
+      }
+    }
+  }
+
   async function updateStatus(id, stageId, stageName) {
     const currentStage = getStageName(selected);
-
     const { error } = await supabase
       .from('incidents')
-      .update({
-        current_stage_id: stageId,
-        status: stageName
-      })
+      .update({ current_stage_id: stageId, status: stageName })
       .eq('id', id);
 
     if (!error) {
@@ -78,15 +132,62 @@ export default function Incidents({ user }) {
       });
 
       setIncidents(prev => prev.map(i =>
-        i.id === id
-          ? { ...i, current_stage_id: stageId, status: stageName }
-          : i
+        i.id === id ? { ...i, current_stage_id: stageId, status: stageName } : i
       ));
+
       if (selected?.id === id) {
-        setSelected(prev => ({ ...prev, current_stage_id: stageId, status: stageName }));
+        const updatedSelected = { ...selected, current_stage_id: stageId, status: stageName };
+        setSelected(updatedSelected);
         fetchActivity(id);
+        fetchStageForm(stageId);
       }
     }
+  }
+
+  async function submitForm() {
+    if (!selected || !stageForm) return;
+    const required = stageFormFields.filter(f => f.required);
+    const missing = required.filter(f => !formResponses[f.id]?.trim());
+    if (missing.length > 0) {
+      alert(`Please fill in required fields: ${missing.map(f => f.label).join(', ')}`);
+      return;
+    }
+
+    setFormSubmitting(true);
+
+    const { data: response, error } = await supabase
+      .from('form_responses')
+      .insert({
+        incident_id: selected.id,
+        form_id: stageForm.id,
+        submitted_by: user.email,
+        stage_id: selected.current_stage_id,
+      })
+      .select()
+      .single();
+
+    if (!error && response) {
+      const fieldResponses = stageFormFields.map(f => ({
+        response_id: response.id,
+        field_id: f.id,
+        value: formResponses[f.id] || '',
+      }));
+
+      await supabase.from('form_field_responses').insert(fieldResponses);
+
+      await supabase.from('incident_activity').insert({
+        incident_id: selected.id,
+        user_email: user.email,
+        action: `Submitted form: ${stageForm.name}`,
+        note: `Form completed at ${stageForm.name} stage`,
+      });
+
+      setExistingResponse(response);
+      setExistingFieldResponses(fieldResponses);
+      setFormSubmitted(true);
+      fetchActivity(selected.id);
+    }
+    setFormSubmitting(false);
   }
 
   const filtered = filter === 'all'
@@ -106,6 +207,88 @@ export default function Incidents({ user }) {
     return stage?.name || incident?.status || 'New';
   }
 
+  function renderFormField(field) {
+    const value = formResponses[field.id] || '';
+    const existingValue = existingFieldResponses.find(r => r.field_id === field.id)?.value || '';
+    const displayValue = formSubmitted ? existingValue : value;
+
+    const commonProps = {
+      disabled: formSubmitted,
+      className: formSubmitted ? 'form-field-input-disabled' : '',
+    };
+
+    switch (field.field_type) {
+      case 'textarea':
+        return (
+          <textarea
+            {...commonProps}
+            value={displayValue}
+            onChange={e => setFormResponses(p => ({...p, [field.id]: e.target.value}))}
+            placeholder={field.placeholder || ''}
+            rows={3}
+          />
+        );
+      case 'dropdown':
+        return (
+          <select
+            {...commonProps}
+            value={displayValue}
+            onChange={e => setFormResponses(p => ({...p, [field.id]: e.target.value}))}
+          >
+            <option value="">Select...</option>
+            {(field.options || '').split(',').map(o => o.trim()).filter(Boolean).map(o => (
+              <option key={o} value={o}>{o}</option>
+            ))}
+          </select>
+        );
+      case 'yes_no':
+        return (
+          <div className="yes-no-field">
+            {['Yes', 'No'].map(opt => (
+              <button
+                key={opt}
+                className={`yes-no-btn ${displayValue === opt ? 'active' : ''}`}
+                onClick={() => !formSubmitted && setFormResponses(p => ({...p, [field.id]: opt}))}
+                disabled={formSubmitted}
+                type="button"
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        );
+      case 'date':
+        return (
+          <input
+            {...commonProps}
+            type="date"
+            value={displayValue}
+            onChange={e => setFormResponses(p => ({...p, [field.id]: e.target.value}))}
+          />
+        );
+      case 'number':
+        return (
+          <input
+            {...commonProps}
+            type="number"
+            value={displayValue}
+            onChange={e => setFormResponses(p => ({...p, [field.id]: e.target.value}))}
+            placeholder={field.placeholder || ''}
+          />
+        );
+      default:
+        return (
+          <input
+            {...commonProps}
+            type="text"
+            value={displayValue}
+            onChange={e => setFormResponses(p => ({...p, [field.id]: e.target.value}))}
+            placeholder={field.placeholder || ''}
+          />
+        );
+    }
+  }
+
   if (loading) {
     return <div className="incidents-loading"><div className="loading-spinner"></div></div>;
   }
@@ -121,18 +304,11 @@ export default function Incidents({ user }) {
       </div>
 
       <div className="incidents-filters">
-        <button
-          className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
-          onClick={() => setFilter('all')}
-        >
+        <button className={`filter-btn ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>
           All ({incidents.length})
         </button>
         {types.map(t => (
-          <button
-            key={t}
-            className={`filter-btn ${filter === t ? 'active' : ''}`}
-            onClick={() => setFilter(t)}
-          >
+          <button key={t} className={`filter-btn ${filter === t ? 'active' : ''}`} onClick={() => setFilter(t)}>
             {t} ({incidents.filter(i => i.incident_type === t).length})
           </button>
         ))}
@@ -150,16 +326,10 @@ export default function Incidents({ user }) {
                 onClick={() => setSelected(incident)}
               >
                 <div className="incident-card-header">
-                  <span
-                    className="incident-type-badge"
-                    style={TYPE_COLORS[incident.incident_type] || TYPE_COLORS['Other']}
-                  >
+                  <span className="incident-type-badge" style={TYPE_COLORS[incident.incident_type] || TYPE_COLORS['Other']}>
                     {incident.incident_type}
                   </span>
-                  <span
-                    className="incident-status-badge"
-                    style={getStageStyle(incident)}
-                  >
+                  <span className="incident-status-badge" style={getStageStyle(incident)}>
                     {getStageName(incident)}
                   </span>
                 </div>
@@ -168,9 +338,7 @@ export default function Incidents({ user }) {
                   <span>📍 {incident.location}</span>
                   <span>🕐 {new Date(incident.occurred_at).toLocaleDateString()}</span>
                 </div>
-                <div className="incident-card-reporter">
-                  Reported by {incident.reported_by}
-                </div>
+                <div className="incident-card-reporter">Reported by {incident.reported_by}</div>
               </div>
             ))
           )}
@@ -184,16 +352,10 @@ export default function Incidents({ user }) {
                 <button className="detail-close" onClick={() => setSelected(null)}>✕</button>
               </div>
               <div className="detail-badges">
-                <span
-                  className="incident-type-badge"
-                  style={TYPE_COLORS[selected.incident_type] || TYPE_COLORS['Other']}
-                >
+                <span className="incident-type-badge" style={TYPE_COLORS[selected.incident_type] || TYPE_COLORS['Other']}>
                   {selected.incident_type}
                 </span>
-                <span
-                  className="incident-status-badge"
-                  style={getStageStyle(selected)}
-                >
+                <span className="incident-status-badge" style={getStageStyle(selected)}>
                   {getStageName(selected)}
                 </span>
                 {selected.is_osha_recordable && <span className="osha-badge">OSHA Recordable</span>}
@@ -233,6 +395,43 @@ export default function Incidents({ user }) {
                 <div className="detail-section">
                   <div className="detail-section-title">Immediate Actions Taken</div>
                   <p className="detail-text">{selected.immediate_action}</p>
+                </div>
+              )}
+
+              {stageForm && (
+                <div className="detail-section">
+                  <div className="stage-form-header">
+                    <div className="stage-form-title">
+                      <span>📋</span>
+                      {stageForm.name}
+                      {formSubmitted && <span className="form-completed-badge">✓ Completed</span>}
+                    </div>
+                    {stageForm.description && (
+                      <div className="stage-form-desc">{stageForm.description}</div>
+                    )}
+                  </div>
+
+                  <div className="stage-form-fields">
+                    {stageFormFields.map(field => (
+                      <div key={field.id} className="stage-form-field">
+                        <label className="stage-form-field-label">
+                          {field.label}
+                          {field.required && !formSubmitted && <span className="required"> *</span>}
+                        </label>
+                        {renderFormField(field)}
+                      </div>
+                    ))}
+                  </div>
+
+                  {!formSubmitted && (
+                    <button
+                      className="form-submit-btn"
+                      onClick={submitForm}
+                      disabled={formSubmitting}
+                    >
+                      {formSubmitting ? 'Submitting...' : `Submit ${stageForm.name}`}
+                    </button>
+                  )}
                 </div>
               )}
 

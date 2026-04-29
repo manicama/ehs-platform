@@ -1,25 +1,27 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from './supabase';
+import Home from './Home';
 import Login from './Login';
 import Submit from './Submit';
 import Incidents from './Incidents';
 import Dashboard from './Dashboard';
 import Workflows from './Workflows';
-import './App.css';
 import Settings from './Settings';
+import './App.css';
 
 function Navigation({ user, onSignOut }) {
   const navigate = useNavigate();
   const location = useLocation();
 
   const tabs = [
-  { path: '/submit', label: 'Submit Incident', icon: '＋' },
-  { path: '/incidents', label: 'Incidents', icon: '☰' },
-  { path: '/dashboard', label: 'Dashboard', icon: '▦' },
-  { path: '/workflows', label: 'Workflows', icon: '⚡' },
-  { path: '/settings', label: 'Settings', icon: '⚙' },
-];
+    { path: '/home', label: 'Home', icon: '⌂' },
+    { path: '/submit', label: 'Submit Incident', icon: '＋' },
+    { path: '/incidents', label: 'Incidents', icon: '☰' },
+    { path: '/dashboard', label: 'Dashboard', icon: '▦' },
+    { path: '/workflows', label: 'Workflows', icon: '⚡' },
+    { path: '/settings', label: 'Settings', icon: '⚙' },
+  ];
 
   return (
     <div className="nav">
@@ -92,13 +94,14 @@ function AppShell() {
       <Navigation user={user} onSignOut={handleSignOut} />
       <div className="page-content">
         <Routes>
-          <Route path="/" element={<Navigate to="/submit" />} />
+          <Route path="/" element={<Navigate to="/home" />} />
+          <Route path="/home" element={<Home user={user} />} />
           <Route path="/submit" element={<Submit user={user} />} />
           <Route path="/incidents" element={<Incidents user={user} />} />
           <Route path="/dashboard" element={<Dashboard user={user} />} />
-          <Route path="*" element={<Navigate to="/submit" />} />
           <Route path="/workflows" element={<Workflows user={user} />} />
           <Route path="/settings" element={<Settings user={user} />} />
+          <Route path="*" element={<Navigate to="/home" />} />
         </Routes>
       </div>
     </div>

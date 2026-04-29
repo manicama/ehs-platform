@@ -12,6 +12,7 @@ const FIELD_TYPES = [
 
 export default function Settings({ user }) {
   const [activeTab, setActiveTab] = useState('company');
+  const [firstName, setFirstName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [industry, setIndustry] = useState('');
   const [employeeCount, setEmployeeCount] = useState('');
@@ -50,6 +51,7 @@ export default function Settings({ user }) {
       .eq('user_email', user.email)
       .single();
     if (data) {
+      setFirstName(data.first_name || '');
       setCompanyName(data.company_name || '');
       setIndustry(data.industry || '');
       setEmployeeCount(data.employee_count || '');
@@ -82,6 +84,7 @@ export default function Settings({ user }) {
       .from('settings')
       .upsert({
         user_email: user.email,
+        first_name: firstName,
         company_name: companyName,
         industry,
         employee_count: parseInt(employeeCount) || null,
@@ -274,6 +277,14 @@ export default function Settings({ user }) {
               <div className="settings-section-sub">Your account information</div>
             </div>
             <div className="settings-fields">
+              <div className="settings-field">
+                <label>First Name</label>
+                <input
+                  value={firstName}
+                  onChange={e => setFirstName(e.target.value)}
+                  placeholder="Enter your first name"
+                />
+              </div>
               <div className="settings-field">
                 <label>Email</label>
                 <input value={user.email} disabled className="settings-disabled" />
