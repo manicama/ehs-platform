@@ -7,6 +7,7 @@ import Incidents from './Incidents';
 import Dashboard from './Dashboard';
 import Workflows from './Workflows';
 import './App.css';
+import Settings from './Settings';
 
 function Navigation({ user, onSignOut }) {
   const navigate = useNavigate();
@@ -17,6 +18,7 @@ function Navigation({ user, onSignOut }) {
   { path: '/incidents', label: 'Incidents', icon: '☰' },
   { path: '/dashboard', label: 'Dashboard', icon: '▦' },
   { path: '/workflows', label: 'Workflows', icon: '⚡' },
+  { path: '/settings', label: 'Settings', icon: '⚙' },
 ];
 
   return (
@@ -96,6 +98,7 @@ function AppShell() {
           <Route path="/dashboard" element={<Dashboard user={user} />} />
           <Route path="*" element={<Navigate to="/submit" />} />
           <Route path="/workflows" element={<Workflows user={user} />} />
+          <Route path="/settings" element={<Settings user={user} />} />
         </Routes>
       </div>
     </div>
