@@ -5,6 +5,7 @@ import Login from './Login';
 import Submit from './Submit';
 import Incidents from './Incidents';
 import Dashboard from './Dashboard';
+import Workflows from './Workflows';
 import './App.css';
 
 function Navigation({ user, onSignOut }) {
@@ -12,10 +13,11 @@ function Navigation({ user, onSignOut }) {
   const location = useLocation();
 
   const tabs = [
-    { path: '/submit', label: 'Submit Incident', icon: '＋' },
-    { path: '/incidents', label: 'Incidents', icon: '☰' },
-    { path: '/dashboard', label: 'Dashboard', icon: '▦' },
-  ];
+  { path: '/submit', label: 'Submit Incident', icon: '＋' },
+  { path: '/incidents', label: 'Incidents', icon: '☰' },
+  { path: '/dashboard', label: 'Dashboard', icon: '▦' },
+  { path: '/workflows', label: 'Workflows', icon: '⚡' },
+];
 
   return (
     <div className="nav">
@@ -93,6 +95,7 @@ function AppShell() {
           <Route path="/incidents" element={<Incidents user={user} />} />
           <Route path="/dashboard" element={<Dashboard user={user} />} />
           <Route path="*" element={<Navigate to="/submit" />} />
+          <Route path="/workflows" element={<Workflows user={user} />} />
         </Routes>
       </div>
     </div>
