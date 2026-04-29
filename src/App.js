@@ -9,12 +9,14 @@ import Dashboard from './Dashboard';
 import Workflows from './Workflows';
 import Settings from './Settings';
 import './App.css';
+import Tasks from './Tasks';
 
 function Navigation({ user, onSignOut }) {
   const navigate = useNavigate();
   const location = useLocation();
 
   const tabs = [
+    { path: '/tasks', label: 'My Tasks', icon: '✓' },
     { path: '/home', label: 'Home', icon: '⌂' },
     { path: '/submit', label: 'Submit Incident', icon: '＋' },
     { path: '/incidents', label: 'Incidents', icon: '☰' },
@@ -94,6 +96,7 @@ function AppShell() {
       <Navigation user={user} onSignOut={handleSignOut} />
       <div className="page-content">
         <Routes>
+          <Route path="/tasks" element={<Tasks user={user} />} />
           <Route path="/" element={<Navigate to="/home" />} />
           <Route path="/home" element={<Home user={user} />} />
           <Route path="/submit" element={<Submit user={user} />} />

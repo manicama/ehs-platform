@@ -10,6 +10,159 @@ const TYPE_COLORS = {
   'Other': { bg: 'rgba(138,148,166,0.1)', color: '#8a94a6' },
 };
 
+function AssignTask({ incident, user, onAssigned }) {
+  const [forms, setForms] = useState([]);
+  const [assignTo, setAssignTo] = useState('');
+  const [formId, setFormId] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+
+  useEffect(() => {
+    supabase.from('forms').select('*').order('name').then(({ data }) => {
+      if (data) setForms(data);
+    });
+  }, []);
+
+  async function assignTask() {
+    if (!assignTo.trim() || !formId) return;
+    setSaving(true);
+    const { error } = await supabase.from('tasks').insert({
+      incident_id: incident.id,
+      form_id: formId,
+      assigned_to: assignTo.trim(),
+      assigned_by: user.email,
+      stage_id: incident.current_stage_id,
+      due_date: dueDate || null,
+      note: note || null,
+      status: 'pending',
+    });
+
+    if (!error) {
+      await supabase.from('incident_activity').insert({
+        incident_id: incident.id,
+        user_email: user.email,
+        action: `Assigned task to ${assignTo}`,
+        note: `Form: ${forms.find(f => f.id === formId)?.name}`,
+      });
+      setSaved(true);
+      setAssignTo('');
+      setFormId('');
+      setDueDate('');
+      setNote('');
+      setShowForm(false);
+      onAssigned();
+      setTimeout(() => setSaved(false), 3000);
+    }
+    setSaving(false);
+  }
+
+  return (
+    <div className="assign-task">
+      {saved && <div className="assign-task-saved">✓ Task assigned successfully</div>}
+      {!showForm ? (
+        <button className="assign-task-btn" onClick={() => setShowForm(true)}>
+          + Assign Task
+        </button>
+      ) : (
+        <div className="assign-task-form">
+          <div className="assign-task-fields">
+            <div className="stage-form-field">
+              <label className="stage-form-field-label">Assign To (email)</label>
+              <input
+                type="email"
+                value={assignTo}
+                onChange={e => setAssignTo(e.target.value)}
+                placeholder="user@company.com"
+                className="task-field-input"
+              />
+            </div>
+            <div className="stage-form-field">
+              <label className="stage-form-field-label">Form to Complete</label>
+              <select
+                value={formId}
+                onChange={e => setFormId(e.target.value)}
+                className="task-field-input"
+              >
+                <option value="">Select a form...</option>
+                {forms.map(f => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="assign-task-row">
+              <div className="stage-form-field">
+                <label className="stage-form-field-label">Due Date (optional)</label>
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={e => setDueDate(e.target.value)}
+                  className="task-field-input"
+                />
+              </div>
+              <div className="stage-form-field">
+                <label className="stage-form-field-label">Note (optional)</label>
+                <input
+                  type="text"
+                  value={note}
+                  onChange={e => setNote(e.target.value)}
+                  placeholder="Instructions for assignee"
+                  className="task-field-input"
+                />
+              </div>
+            </div>
+          </div>
+          <div style={{display: 'flex', gap: '8px', marginTop: '12px'}}>
+            <button onClick={assignTask} disabled={saving || !assignTo || !formId}>
+              {saving ? 'Assigning...' : 'Assign Task'}
+            </button>
+            <button className="btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StageConfirmModal({ isOpen, onConfirm, onCancel, currentStage, targetStage, isBackward }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-card">
+        <div className="modal-icon">
+          {isBackward ? '⚠️' : '→'}
+        </div>
+        <h3 className="modal-title">
+          {isBackward ? 'Move Stage Backwards?' : 'Move to Next Stage?'}
+        </h3>
+        <p className="modal-body">
+          {isBackward
+            ? `You are about to move this incident backwards from `
+            : `You are about to move this incident from `}
+          <strong>{currentStage}</strong> to <strong>{targetStage}</strong>.
+          {isBackward && (
+            <span className="modal-warning">
+              Moving backwards will reopen the incident at an earlier stage. This action will be logged.
+            </span>
+          )}
+        </p>
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onCancel}>Cancel</button>
+          <button
+            className={isBackward ? 'modal-btn-warning' : 'modal-btn-confirm'}
+            onClick={onConfirm}
+          >
+            {isBackward ? 'Move Backwards' : 'Confirm Move'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Incidents({ user }) {
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -18,13 +171,8 @@ export default function Incidents({ user }) {
   const [workflowStages, setWorkflowStages] = useState([]);
   const [activity, setActivity] = useState([]);
   const [activityLoading, setActivityLoading] = useState(false);
-  const [stageForm, setStageForm] = useState(null);
-  const [stageFormFields, setStageFormFields] = useState([]);
-  const [formResponses, setFormResponses] = useState({});
-  const [existingResponse, setExistingResponse] = useState(null);
-  const [existingFieldResponses, setExistingFieldResponses] = useState([]);
-  const [formSubmitting, setFormSubmitting] = useState(false);
-  const [formSubmitted, setFormSubmitted] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [pendingStage, setPendingStage] = useState(null);
 
   useEffect(() => {
     fetchIncidents();
@@ -32,17 +180,14 @@ export default function Incidents({ user }) {
   }, []);
 
   useEffect(() => {
-    if (selected) {
-      fetchActivity(selected.id);
-      fetchStageForm(selected.current_stage_id);
-    }
+    if (selected) fetchActivity(selected.id);
   }, [selected]);
 
   async function fetchIncidents() {
     setLoading(true);
     const { data, error } = await supabase
       .from('incidents')
-      .select(`*, workflow_stages (id, name, color, order_index, form_id)`)
+      .select(`*, workflow_stages (id, name, color, order_index)`)
       .order('created_at', { ascending: false });
     if (!error) setIncidents(data);
     setLoading(false);
@@ -67,127 +212,59 @@ export default function Incidents({ user }) {
     setActivityLoading(false);
   }
 
-  async function fetchStageForm(stageId) {
-    setStageForm(null);
-    setStageFormFields([]);
-    setFormResponses({});
-    setExistingResponse(null);
-    setExistingFieldResponses([]);
-    setFormSubmitted(false);
-
-    if (!stageId) return;
-
-    const stage = workflowStages.find(s => s.id === stageId);
-    if (!stage?.form_id) return;
-
-    const { data: form } = await supabase
-      .from('forms')
-      .select('*')
-      .eq('id', stage.form_id)
-      .single();
-
-    const { data: fields } = await supabase
-      .from('form_fields')
-      .select('*')
-      .eq('form_id', stage.form_id)
-      .order('order_index');
-
-    if (form) setStageForm(form);
-    if (fields) setStageFormFields(fields);
-
-    if (selected) {
-      const { data: response } = await supabase
-        .from('form_responses')
-        .select('*')
-        .eq('incident_id', selected.id)
-        .eq('form_id', stage.form_id)
-        .single();
-
-      if (response) {
-        setExistingResponse(response);
-        setFormSubmitted(true);
-        const { data: fieldResponses } = await supabase
-          .from('form_field_responses')
-          .select('*')
-          .eq('response_id', response.id);
-        if (fieldResponses) setExistingFieldResponses(fieldResponses);
-      }
-    }
+  function requestStageChange(stage) {
+    if (selected.current_stage_id === stage.id) return;
+    setPendingStage(stage);
+    setModalOpen(true);
   }
 
-  async function updateStatus(id, stageId, stageName) {
+  async function confirmStageChange() {
+    if (!pendingStage || !selected) return;
     const currentStage = getStageName(selected);
+
     const { error } = await supabase
       .from('incidents')
-      .update({ current_stage_id: stageId, status: stageName })
-      .eq('id', id);
+      .update({
+        current_stage_id: pendingStage.id,
+        status: pendingStage.name
+      })
+      .eq('id', selected.id);
 
     if (!error) {
       await supabase.from('incident_activity').insert({
-        incident_id: id,
+        incident_id: selected.id,
         user_email: user.email,
-        action: `Moved to ${stageName}`,
+        action: `Moved to ${pendingStage.name}`,
         from_stage: currentStage,
-        to_stage: stageName,
+        to_stage: pendingStage.name,
       });
 
       setIncidents(prev => prev.map(i =>
-        i.id === id ? { ...i, current_stage_id: stageId, status: stageName } : i
+        i.id === selected.id
+          ? { ...i, current_stage_id: pendingStage.id, status: pendingStage.name }
+          : i
       ));
-
-      if (selected?.id === id) {
-        const updatedSelected = { ...selected, current_stage_id: stageId, status: stageName };
-        setSelected(updatedSelected);
-        fetchActivity(id);
-        fetchStageForm(stageId);
-      }
-    }
-  }
-
-  async function submitForm() {
-    if (!selected || !stageForm) return;
-    const required = stageFormFields.filter(f => f.required);
-    const missing = required.filter(f => !formResponses[f.id]?.trim());
-    if (missing.length > 0) {
-      alert(`Please fill in required fields: ${missing.map(f => f.label).join(', ')}`);
-      return;
-    }
-
-    setFormSubmitting(true);
-
-    const { data: response, error } = await supabase
-      .from('form_responses')
-      .insert({
-        incident_id: selected.id,
-        form_id: stageForm.id,
-        submitted_by: user.email,
-        stage_id: selected.current_stage_id,
-      })
-      .select()
-      .single();
-
-    if (!error && response) {
-      const fieldResponses = stageFormFields.map(f => ({
-        response_id: response.id,
-        field_id: f.id,
-        value: formResponses[f.id] || '',
+      setSelected(prev => ({
+        ...prev,
+        current_stage_id: pendingStage.id,
+        status: pendingStage.name
       }));
-
-      await supabase.from('form_field_responses').insert(fieldResponses);
-
-      await supabase.from('incident_activity').insert({
-        incident_id: selected.id,
-        user_email: user.email,
-        action: `Submitted form: ${stageForm.name}`,
-        note: `Form completed at ${stageForm.name} stage`,
-      });
-
-      setExistingResponse(response);
-      setExistingFieldResponses(fieldResponses);
-      setFormSubmitted(true);
       fetchActivity(selected.id);
     }
-    setFormSubmitting(false);
+
+    setModalOpen(false);
+    setPendingStage(null);
+  }
+
+  function cancelStageChange() {
+    setModalOpen(false);
+    setPendingStage(null);
+  }
+
+  function isBackwardMove(targetStage) {
+    const currentStage = workflowStages.find(s => s.id === selected?.current_stage_id);
+    if (!currentStage) return false;
+    return targetStage.order_index < currentStage.order_index;
   }
 
   const filtered = filter === 'all'
@@ -207,94 +284,23 @@ export default function Incidents({ user }) {
     return stage?.name || incident?.status || 'New';
   }
 
-  function renderFormField(field) {
-    const value = formResponses[field.id] || '';
-    const existingValue = existingFieldResponses.find(r => r.field_id === field.id)?.value || '';
-    const displayValue = formSubmitted ? existingValue : value;
-
-    const commonProps = {
-      disabled: formSubmitted,
-      className: formSubmitted ? 'form-field-input-disabled' : '',
-    };
-
-    switch (field.field_type) {
-      case 'textarea':
-        return (
-          <textarea
-            {...commonProps}
-            value={displayValue}
-            onChange={e => setFormResponses(p => ({...p, [field.id]: e.target.value}))}
-            placeholder={field.placeholder || ''}
-            rows={3}
-          />
-        );
-      case 'dropdown':
-        return (
-          <select
-            {...commonProps}
-            value={displayValue}
-            onChange={e => setFormResponses(p => ({...p, [field.id]: e.target.value}))}
-          >
-            <option value="">Select...</option>
-            {(field.options || '').split(',').map(o => o.trim()).filter(Boolean).map(o => (
-              <option key={o} value={o}>{o}</option>
-            ))}
-          </select>
-        );
-      case 'yes_no':
-        return (
-          <div className="yes-no-field">
-            {['Yes', 'No'].map(opt => (
-              <button
-                key={opt}
-                className={`yes-no-btn ${displayValue === opt ? 'active' : ''}`}
-                onClick={() => !formSubmitted && setFormResponses(p => ({...p, [field.id]: opt}))}
-                disabled={formSubmitted}
-                type="button"
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-        );
-      case 'date':
-        return (
-          <input
-            {...commonProps}
-            type="date"
-            value={displayValue}
-            onChange={e => setFormResponses(p => ({...p, [field.id]: e.target.value}))}
-          />
-        );
-      case 'number':
-        return (
-          <input
-            {...commonProps}
-            type="number"
-            value={displayValue}
-            onChange={e => setFormResponses(p => ({...p, [field.id]: e.target.value}))}
-            placeholder={field.placeholder || ''}
-          />
-        );
-      default:
-        return (
-          <input
-            {...commonProps}
-            type="text"
-            value={displayValue}
-            onChange={e => setFormResponses(p => ({...p, [field.id]: e.target.value}))}
-            placeholder={field.placeholder || ''}
-          />
-        );
-    }
-  }
-
   if (loading) {
     return <div className="incidents-loading"><div className="loading-spinner"></div></div>;
   }
 
+  const currentStageIndex = workflowStages.findIndex(s => s.id === selected?.current_stage_id);
+
   return (
     <div className="incidents-page">
+      <StageConfirmModal
+        isOpen={modalOpen}
+        onConfirm={confirmStageChange}
+        onCancel={cancelStageChange}
+        currentStage={getStageName(selected)}
+        targetStage={pendingStage?.name}
+        isBackward={pendingStage ? isBackwardMove(pendingStage) : false}
+      />
+
       <div className="incidents-header">
         <div>
           <h2>Incidents</h2>
@@ -398,60 +404,39 @@ export default function Incidents({ user }) {
                 </div>
               )}
 
-              {stageForm && (
-                <div className="detail-section">
-                  <div className="stage-form-header">
-                    <div className="stage-form-title">
-                      <span>📋</span>
-                      {stageForm.name}
-                      {formSubmitted && <span className="form-completed-badge">✓ Completed</span>}
-                    </div>
-                    {stageForm.description && (
-                      <div className="stage-form-desc">{stageForm.description}</div>
-                    )}
-                  </div>
-
-                  <div className="stage-form-fields">
-                    {stageFormFields.map(field => (
-                      <div key={field.id} className="stage-form-field">
-                        <label className="stage-form-field-label">
-                          {field.label}
-                          {field.required && !formSubmitted && <span className="required"> *</span>}
-                        </label>
-                        {renderFormField(field)}
-                      </div>
-                    ))}
-                  </div>
-
-                  {!formSubmitted && (
-                    <button
-                      className="form-submit-btn"
-                      onClick={submitForm}
-                      disabled={formSubmitting}
-                    >
-                      {formSubmitting ? 'Submitting...' : `Submit ${stageForm.name}`}
-                    </button>
-                  )}
-                </div>
-              )}
+              <div className="detail-section">
+                <div className="detail-section-title">Assign Task</div>
+                <AssignTask
+                  incident={selected}
+                  user={user}
+                  onAssigned={() => fetchActivity(selected.id)}
+                />
+              </div>
 
               <div className="detail-section">
-                <div className="detail-section-title">Move to Stage</div>
-                <div className="status-buttons">
-                  {workflowStages.map(stage => (
-                    <button
-                      key={stage.id}
-                      className={`status-btn ${selected.current_stage_id === stage.id ? 'active' : ''}`}
-                      style={selected.current_stage_id === stage.id ? {
-                        background: stage.color + '20',
-                        color: stage.color,
-                        borderColor: stage.color
-                      } : {}}
-                      onClick={() => updateStatus(selected.id, stage.id, stage.name)}
-                    >
-                      {stage.name}
-                    </button>
-                  ))}
+                <div className="detail-section-title">Workflow Stage</div>
+                <div className="stage-progress">
+                  {workflowStages.map((stage, index) => {
+                    const isCurrent = selected.current_stage_id === stage.id;
+                    const isPast = index < currentStageIndex;
+                    const isFuture = index > currentStageIndex;
+                    return (
+                      <div key={stage.id} className="stage-progress-item">
+                        <button
+                          className={`stage-progress-btn ${isCurrent ? 'current' : ''} ${isPast ? 'past' : ''} ${isFuture ? 'future' : ''}`}
+                          style={isCurrent ? { background: stage.color + '20', color: stage.color, borderColor: stage.color } : {}}
+                          onClick={() => requestStageChange(stage)}
+                          disabled={isCurrent}
+                        >
+                          {isPast && <span className="stage-check">✓</span>}
+                          {stage.name}
+                        </button>
+                        {index < workflowStages.length - 1 && (
+                          <span className="stage-progress-arrow">→</span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

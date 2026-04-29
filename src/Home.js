@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from './supabase';
 
 const DEFAULT_WIDGETS = [
+  { id: 'my_tasks', enabled: true },
   { id: 'my_incidents', enabled: true },
   { id: 'open_investigations', enabled: true },
   { id: 'trir_snapshot', enabled: true },
@@ -12,6 +13,7 @@ const DEFAULT_WIDGETS = [
 ];
 
 const WIDGET_META = {
+  my_tasks: { title: 'My Tasks', icon: '✓', description: 'Your outstanding tasks' },
   my_incidents: { title: 'My Incidents', icon: '📋', description: 'Incidents you submitted' },
   open_investigations: { title: 'Open Investigations', icon: '🔍', description: 'Incidents under investigation' },
   trir_snapshot: { title: 'TRIR Snapshot', icon: '📊', description: 'Current TRIR rate' },
@@ -21,6 +23,7 @@ const WIDGET_META = {
 };
 
 export default function Home({ user }) {
+  const [tasks, setTasks] = useState([]);
   const navigate = useNavigate();
   const [firstName, setFirstName] = useState('');
   const [incidents, setIncidents] = useState([]);
@@ -52,6 +55,9 @@ export default function Home({ user }) {
       supabase.from('incident_activity').select('*').order('created_at', { ascending: false }).limit(5),
       supabase.from('settings').select('*').eq('user_email', user.email).single(),
       supabase.from('workflow_stages').select('*').order('order_index'),
+      supabase.from('tasks').select('*').eq('assigned_to', user.email).eq('status', 'pending').then(({ data }) => {
+        if (data) setTasks(data);
+        }),
     ]);
     if (incRes.data) setIncidents(incRes.data);
     if (actRes.data) setActivity(actRes.data);
@@ -154,6 +160,22 @@ Respond conversationally and helpfully. If they ask to navigate somewhere, start
 
   function renderWidget(widgetId) {
     switch (widgetId) {
+      case 'my_tasks':
+  return (
+    <div className="home-widget">
+      <div className="widget-header">
+        <span className="widget-icon">✓</span>
+        <span className="widget-title">My Tasks</span>
+      </div>
+      <div className="widget-number" style={{color: tasks.length > 0 ? '#e24b4a' : '#1d9e75'}}>
+        {tasks.length}
+      </div>
+      <div className="widget-sub">pending tasks</div>
+      <button className="widget-link" onClick={() => navigate('/tasks')}>
+        View tasks →
+      </button>
+    </div>
+  );
       case 'my_incidents':
         return (
           <div className="home-widget">
