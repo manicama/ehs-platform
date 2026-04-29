@@ -8,47 +8,66 @@ import Incidents from './Incidents';
 import Dashboard from './Dashboard';
 import Workflows from './Workflows';
 import Settings from './Settings';
-import './App.css';
 import Tasks from './Tasks';
+import './App.css';
 
-function Navigation({ user, onSignOut }) {
+function Sidebar({ user, onSignOut }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const tabs = [
-    { path: '/tasks', label: 'My Tasks', icon: '✓' },
-    { path: '/home', label: 'Home', icon: '⌂' },
-    { path: '/submit', label: 'Submit Incident', icon: '＋' },
-    { path: '/incidents', label: 'Incidents', icon: '☰' },
-    { path: '/dashboard', label: 'Dashboard', icon: '▦' },
-    { path: '/workflows', label: 'Workflows', icon: '⚡' },
-    { path: '/settings', label: 'Settings', icon: '⚙' },
+  const topNav = [
+    { path: '/home', icon: '⌂', label: 'Home' },
+    { path: '/submit', icon: '＋', label: 'New Submission' },
+    { path: '/incidents', icon: '☰', label: 'Incidents' },
+    { path: '/tasks', icon: '✓', label: 'My Tasks' },
+    { path: '/workflows', icon: '⚡', label: 'Workflows' },
+    { path: '/dashboard', icon: '▦', label: 'Dashboard' },
   ];
 
+  const bottomNav = [
+    { path: '/settings', icon: '⚙', label: 'Settings' },
+  ];
+
+  const initials = user?.email?.substring(0, 2).toUpperCase() || 'U';
+
   return (
-    <div className="nav">
-      <div className="nav-brand">
-        <div className="nav-logo">EHS</div>
-        <div className="nav-brand-text">
-          <span className="nav-title">SafetyIQ</span>
-          <span className="nav-sub">EHS Platform</span>
-        </div>
+    <div className="sidebar">
+      <div className="sidebar-logo" onClick={() => navigate('/home')}>
+        <div className="sidebar-logo-icon">EHS</div>
       </div>
-      <div className="nav-tabs">
-        {tabs.map(tab => (
-          <button
-            key={tab.path}
-            className={`nav-tab ${location.pathname === tab.path ? 'active' : ''}`}
-            onClick={() => navigate(tab.path)}
+
+      <div className="sidebar-top">
+        {topNav.map(item => (
+          <div
+            key={item.path}
+            className={`sidebar-item ${location.pathname === item.path ? 'active' : ''}`}
+            onClick={() => navigate(item.path)}
           >
-            <span className="nav-tab-icon">{tab.icon}</span>
-            {tab.label}
-          </button>
+            <span className="sidebar-icon">{item.icon}</span>
+            <span className="sidebar-label">{item.label}</span>
+          </div>
         ))}
       </div>
-      <div className="nav-user">
-        <span className="nav-user-email">{user?.email}</span>
-        <button className="nav-signout" onClick={onSignOut}>Sign out</button>
+
+      <div className="sidebar-bottom">
+        {bottomNav.map(item => (
+          <div
+            key={item.path}
+            className={`sidebar-item ${location.pathname === item.path ? 'active' : ''}`}
+            onClick={() => navigate(item.path)}
+          >
+            <span className="sidebar-icon">{item.icon}</span>
+            <span className="sidebar-label">{item.label}</span>
+          </div>
+        ))}
+
+        <div className="sidebar-user">
+          <div className="sidebar-avatar">{initials}</div>
+          <div className="sidebar-user-info">
+            <div className="sidebar-user-email">{user?.email}</div>
+            <button className="sidebar-signout" onClick={onSignOut}>Sign out</button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -92,15 +111,15 @@ function AppShell() {
   }
 
   return (
-    <div className="app-shell">
-      <Navigation user={user} onSignOut={handleSignOut} />
-      <div className="page-content">
+    <div className="app-layout">
+      <Sidebar user={user} onSignOut={handleSignOut} />
+      <div className="main-content">
         <Routes>
-          <Route path="/tasks" element={<Tasks user={user} />} />
           <Route path="/" element={<Navigate to="/home" />} />
           <Route path="/home" element={<Home user={user} />} />
           <Route path="/submit" element={<Submit user={user} />} />
           <Route path="/incidents" element={<Incidents user={user} />} />
+          <Route path="/tasks" element={<Tasks user={user} />} />
           <Route path="/dashboard" element={<Dashboard user={user} />} />
           <Route path="/workflows" element={<Workflows user={user} />} />
           <Route path="/settings" element={<Settings user={user} />} />
