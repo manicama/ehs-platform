@@ -9,6 +9,7 @@ const COLORS = [
 export default function Workflows({ user }) {
   const [workflows, setWorkflows] = useState([]);
   const [stages, setStages] = useState([]);
+  const [forms, setForms] = useState([]);
   const [selectedWorkflow, setSelectedWorkflow] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editingStage, setEditingStage] = useState(null);
@@ -16,38 +17,32 @@ export default function Workflows({ user }) {
   const [showNewWorkflow, setShowNewWorkflow] = useState(false);
   const [newWorkflowName, setNewWorkflowName] = useState('');
   const [newWorkflowDesc, setNewWorkflowDesc] = useState('');
-  const [newStage, setNewStage] = useState({ name: '', description: '', color: '#378add' });
+  const [newStage, setNewStage] = useState({ name: '', description: '', color: '#378add', form_id: '' });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetchWorkflows();
+    fetchAll();
   }, []);
 
-  async function fetchWorkflows() {
+  async function fetchAll() {
     setLoading(true);
-    const { data: wData } = await supabase
-      .from('workflows')
-      .select('*')
-      .order('created_at');
-
-    const { data: sData } = await supabase
-      .from('workflow_stages')
-      .select('*')
-      .order('order_index');
-
-    if (wData) {
-      setWorkflows(wData);
-      if (wData.length > 0 && !selectedWorkflow) {
-        setSelectedWorkflow(wData[0]);
+    const [wRes, sRes, fRes] = await Promise.all([
+      supabase.from('workflows').select('*').order('created_at'),
+      supabase.from('workflow_stages').select('*').order('order_index'),
+      supabase.from('forms').select('*').order('name'),
+    ]);
+    if (wRes.data) {
+      setWorkflows(wRes.data);
+      if (wRes.data.length > 0 && !selectedWorkflow) {
+        setSelectedWorkflow(wRes.data[0]);
       }
     }
-    if (sData) setStages(sData);
+    if (sRes.data) setStages(sRes.data);
+    if (fRes.data) setForms(fRes.data);
     setLoading(false);
   }
 
-  const workflowStages = stages.filter(s =>
-    s.workflow_id === selectedWorkflow?.id
-  );
+  const workflowStages = stages.filter(s => s.workflow_id === selectedWorkflow?.id);
 
   async function createWorkflow() {
     if (!newWorkflowName.trim()) return;
@@ -62,7 +57,6 @@ export default function Workflows({ user }) {
       })
       .select()
       .single();
-
     if (!error && data) {
       setWorkflows(prev => [...prev, data]);
       setSelectedWorkflow(data);
@@ -83,14 +77,14 @@ export default function Workflows({ user }) {
         name: newStage.name,
         description: newStage.description,
         order_index: workflowStages.length + 1,
-        color: newStage.color
+        color: newStage.color,
+        form_id: newStage.form_id || null,
       })
       .select()
       .single();
-
     if (!error && data) {
       setStages(prev => [...prev, data]);
-      setNewStage({ name: '', description: '', color: '#378add' });
+      setNewStage({ name: '', description: '', color: '#378add', form_id: '' });
       setShowNewStage(false);
     }
     setSaving(false);
@@ -101,7 +95,6 @@ export default function Workflows({ user }) {
       .from('workflow_stages')
       .update(updates)
       .eq('id', id);
-
     if (!error) {
       setStages(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
       setEditingStage(null);
@@ -109,20 +102,18 @@ export default function Workflows({ user }) {
   }
 
   async function deleteStage(id) {
-    const { error } = await supabase
-      .from('workflow_stages')
-      .delete()
-      .eq('id', id);
-
-    if (!error) {
-      setStages(prev => prev.filter(s => s.id !== id));
-    }
+    const { error } = await supabase.from('workflow_stages').delete().eq('id', id);
+    if (!error) setStages(prev => prev.filter(s => s.id !== id));
   }
 
   async function setDefault(workflowId) {
     await supabase.from('workflows').update({ is_default: false }).neq('id', workflowId);
     await supabase.from('workflows').update({ is_default: true }).eq('id', workflowId);
     setWorkflows(prev => prev.map(w => ({ ...w, is_default: w.id === workflowId })));
+  }
+
+  function getFormName(formId) {
+    return forms.find(f => f.id === formId)?.name || null;
   }
 
   if (loading) {
@@ -145,29 +136,15 @@ export default function Workflows({ user }) {
           <div className="config-row" style={{marginTop: '12px'}}>
             <div className="control-group">
               <label>Workflow Name</label>
-              <input
-                value={newWorkflowName}
-                onChange={e => setNewWorkflowName(e.target.value)}
-                placeholder="e.g. Standard Incident Workflow"
-                style={{width: '260px'}}
-              />
+              <input value={newWorkflowName} onChange={e => setNewWorkflowName(e.target.value)} placeholder="e.g. Standard Incident Workflow" style={{width: '260px'}} />
             </div>
             <div className="control-group">
               <label>Description</label>
-              <input
-                value={newWorkflowDesc}
-                onChange={e => setNewWorkflowDesc(e.target.value)}
-                placeholder="Optional description"
-                style={{width: '260px'}}
-              />
+              <input value={newWorkflowDesc} onChange={e => setNewWorkflowDesc(e.target.value)} placeholder="Optional description" style={{width: '260px'}} />
             </div>
             <div style={{display:'flex', gap:'8px', alignSelf:'flex-end'}}>
-              <button onClick={createWorkflow} disabled={saving}>
-                {saving ? 'Creating...' : 'Create'}
-              </button>
-              <button className="btn-secondary" onClick={() => setShowNewWorkflow(false)}>
-                Cancel
-              </button>
+              <button onClick={createWorkflow} disabled={saving}>{saving ? 'Creating...' : 'Create'}</button>
+              <button className="btn-secondary" onClick={() => setShowNewWorkflow(false)}>Cancel</button>
             </div>
           </div>
         </div>
@@ -218,16 +195,8 @@ export default function Workflows({ user }) {
                   {editingStage === stage.id ? (
                     <div className="stage-edit-form">
                       <div className="stage-edit-fields">
-                        <input
-                          defaultValue={stage.name}
-                          placeholder="Stage name"
-                          id={`name-${stage.id}`}
-                        />
-                        <input
-                          defaultValue={stage.description}
-                          placeholder="Description"
-                          id={`desc-${stage.id}`}
-                        />
+                        <input defaultValue={stage.name} placeholder="Stage name" id={`name-${stage.id}`} />
+                        <input defaultValue={stage.description} placeholder="Description" id={`desc-${stage.id}`} />
                         <div className="color-picker">
                           {COLORS.map(c => (
                             <div
@@ -239,10 +208,23 @@ export default function Workflows({ user }) {
                           ))}
                         </div>
                       </div>
+                      <div className="stage-form-selector">
+                        <label>Attach Form (optional)</label>
+                        <select
+                          defaultValue={stage.form_id || ''}
+                          id={`form-${stage.id}`}
+                        >
+                          <option value="">No form attached</option>
+                          {forms.map(f => (
+                            <option key={f.id} value={f.id}>{f.name}</option>
+                          ))}
+                        </select>
+                      </div>
                       <div style={{display:'flex', gap:'8px', marginTop:'12px'}}>
                         <button onClick={() => updateStage(stage.id, {
                           name: document.getElementById(`name-${stage.id}`).value,
                           description: document.getElementById(`desc-${stage.id}`).value,
+                          form_id: document.getElementById(`form-${stage.id}`).value || null,
                         })}>Save</button>
                         <button className="btn-secondary" onClick={() => setEditingStage(null)}>Cancel</button>
                       </div>
@@ -253,8 +235,11 @@ export default function Workflows({ user }) {
                       <div className="stage-color-dot" style={{background: stage.color}}></div>
                       <div className="stage-info">
                         <div className="stage-name">{stage.name}</div>
-                        {stage.description && (
-                          <div className="stage-desc">{stage.description}</div>
+                        {stage.description && <div className="stage-desc">{stage.description}</div>}
+                        {stage.form_id && (
+                          <div className="stage-form-tag">
+                            📋 {getFormName(stage.form_id)}
+                          </div>
                         )}
                       </div>
                       <div className="stage-actions">
@@ -291,10 +276,20 @@ export default function Workflows({ user }) {
                         ))}
                       </div>
                     </div>
+                    <div className="stage-form-selector">
+                      <label>Attach Form (optional)</label>
+                      <select
+                        value={newStage.form_id}
+                        onChange={e => setNewStage(prev => ({...prev, form_id: e.target.value}))}
+                      >
+                        <option value="">No form attached</option>
+                        {forms.map(f => (
+                          <option key={f.id} value={f.id}>{f.name}</option>
+                        ))}
+                      </select>
+                    </div>
                     <div style={{display:'flex', gap:'8px', marginTop:'12px'}}>
-                      <button onClick={addStage} disabled={saving}>
-                        {saving ? 'Adding...' : 'Add Stage'}
-                      </button>
+                      <button onClick={addStage} disabled={saving}>{saving ? 'Adding...' : 'Add Stage'}</button>
                       <button className="btn-secondary" onClick={() => setShowNewStage(false)}>Cancel</button>
                     </div>
                   </div>
