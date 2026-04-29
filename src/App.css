@@ -1075,3 +1075,72 @@ input[type="date"] {
 }
 
 .workflow-banner-stage strong { color: #378add; }
+
+.activity-loading { font-size: 13px; color: #8a94a6; padding: 8px 0; }
+.activity-empty { font-size: 13px; color: #8a94a6; padding: 8px 0; }
+
+.activity-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: relative;
+}
+
+.activity-item {
+  display: flex;
+  gap: 12px;
+  position: relative;
+  padding-bottom: 16px;
+}
+
+.activity-item:last-child { padding-bottom: 0; }
+
+.activity-dot {
+  width: 10px;
+  height: 10px;
+  background: #378add;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+  position: relative;
+  z-index: 1;
+}
+
+.activity-line {
+  position: absolute;
+  left: 4px;
+  top: 14px;
+  bottom: 0;
+  width: 2px;
+  background: rgba(0,0,0,0.06);
+}
+
+.activity-content { flex: 1; }
+
+.activity-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1a2035;
+  margin-bottom: 3px;
+}
+
+.activity-from { color: #8a94a6; }
+.activity-arrow { color: #8a94a6; font-size: 12px; }
+.activity-to { color: #378add; font-weight: 600; }
+
+.activity-meta {
+  font-size: 11px;
+  color: #8a94a6;
+}
+
+.activity-note {
+  font-size: 12px;
+  color: #4a5568;
+  background: #f8f9fb;
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-top: 6px;
+}

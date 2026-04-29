@@ -16,27 +16,24 @@ export default function Incidents({ user }) {
   const [selected, setSelected] = useState(null);
   const [filter, setFilter] = useState('all');
   const [workflowStages, setWorkflowStages] = useState([]);
+  const [activity, setActivity] = useState([]);
+  const [activityLoading, setActivityLoading] = useState(false);
 
   useEffect(() => {
     fetchIncidents();
     fetchWorkflowStages();
   }, []);
 
+  useEffect(() => {
+    if (selected) fetchActivity(selected.id);
+  }, [selected]);
+
   async function fetchIncidents() {
     setLoading(true);
     const { data, error } = await supabase
       .from('incidents')
-      .select(`
-        *,
-        workflow_stages (
-          id,
-          name,
-          color,
-          order_index
-        )
-      `)
+      .select(`*, workflow_stages (id, name, color, order_index)`)
       .order('created_at', { ascending: false });
-
     if (!error) setIncidents(data);
     setLoading(false);
   }
@@ -49,7 +46,20 @@ export default function Incidents({ user }) {
     if (data) setWorkflowStages(data);
   }
 
+  async function fetchActivity(incidentId) {
+    setActivityLoading(true);
+    const { data } = await supabase
+      .from('incident_activity')
+      .select('*')
+      .eq('incident_id', incidentId)
+      .order('created_at', { ascending: false });
+    if (data) setActivity(data);
+    setActivityLoading(false);
+  }
+
   async function updateStatus(id, stageId, stageName) {
+    const currentStage = getStageName(selected);
+
     const { error } = await supabase
       .from('incidents')
       .update({
@@ -59,6 +69,14 @@ export default function Incidents({ user }) {
       .eq('id', id);
 
     if (!error) {
+      await supabase.from('incident_activity').insert({
+        incident_id: id,
+        user_email: user.email,
+        action: `Moved to ${stageName}`,
+        from_stage: currentStage,
+        to_stage: stageName,
+      });
+
       setIncidents(prev => prev.map(i =>
         i.id === id
           ? { ...i, current_stage_id: stageId, status: stageName }
@@ -66,6 +84,7 @@ export default function Incidents({ user }) {
       ));
       if (selected?.id === id) {
         setSelected(prev => ({ ...prev, current_stage_id: stageId, status: stageName }));
+        fetchActivity(id);
       }
     }
   }
@@ -83,16 +102,12 @@ export default function Incidents({ user }) {
   }
 
   function getStageName(incident) {
-    const stage = workflowStages.find(s => s.id === incident.current_stage_id);
-    return stage?.name || incident.status || 'New';
+    const stage = workflowStages.find(s => s.id === incident?.current_stage_id);
+    return stage?.name || incident?.status || 'New';
   }
 
   if (loading) {
-    return (
-      <div className="incidents-loading">
-        <div className="loading-spinner"></div>
-      </div>
-    );
+    return <div className="incidents-loading"><div className="loading-spinner"></div></div>;
   }
 
   return (
@@ -126,9 +141,7 @@ export default function Incidents({ user }) {
       <div className="incidents-layout">
         <div className="incidents-list">
           {filtered.length === 0 ? (
-            <div className="incidents-empty">
-              <p>No incidents found</p>
-            </div>
+            <div className="incidents-empty"><p>No incidents found</p></div>
           ) : (
             filtered.map(incident => (
               <div
@@ -183,12 +196,8 @@ export default function Incidents({ user }) {
                 >
                   {getStageName(selected)}
                 </span>
-                {selected.is_osha_recordable && (
-                  <span className="osha-badge">OSHA Recordable</span>
-                )}
-                {selected.is_dart && (
-                  <span className="dart-badge">DART</span>
-                )}
+                {selected.is_osha_recordable && <span className="osha-badge">OSHA Recordable</span>}
+                {selected.is_dart && <span className="dart-badge">DART</span>}
               </div>
             </div>
 
@@ -198,9 +207,7 @@ export default function Incidents({ user }) {
                 <div className="detail-grid">
                   <div className="detail-item">
                     <span className="detail-label">Date & Time</span>
-                    <span className="detail-value">
-                      {new Date(selected.occurred_at).toLocaleString()}
-                    </span>
+                    <span className="detail-value">{new Date(selected.occurred_at).toLocaleString()}</span>
                   </div>
                   <div className="detail-item">
                     <span className="detail-label">Location</span>
@@ -212,9 +219,7 @@ export default function Incidents({ user }) {
                   </div>
                   <div className="detail-item">
                     <span className="detail-label">Submitted</span>
-                    <span className="detail-value">
-                      {new Date(selected.created_at).toLocaleString()}
-                    </span>
+                    <span className="detail-value">{new Date(selected.created_at).toLocaleString()}</span>
                   </div>
                 </div>
               </div>
@@ -249,6 +254,41 @@ export default function Incidents({ user }) {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="detail-section">
+                <div className="detail-section-title">Activity Log</div>
+                {activityLoading ? (
+                  <div className="activity-loading">Loading...</div>
+                ) : activity.length === 0 ? (
+                  <div className="activity-empty">No activity yet</div>
+                ) : (
+                  <div className="activity-timeline">
+                    {activity.map((item, index) => (
+                      <div key={item.id} className="activity-item">
+                        <div className="activity-dot"></div>
+                        {index < activity.length - 1 && <div className="activity-line"></div>}
+                        <div className="activity-content">
+                          <div className="activity-action">
+                            {item.from_stage && item.to_stage ? (
+                              <>
+                                <span className="activity-from">{item.from_stage}</span>
+                                <span className="activity-arrow">→</span>
+                                <span className="activity-to">{item.to_stage}</span>
+                              </>
+                            ) : (
+                              <span>{item.action}</span>
+                            )}
+                          </div>
+                          <div className="activity-meta">
+                            {item.user_email} · {new Date(item.created_at).toLocaleString()}
+                          </div>
+                          {item.note && <div className="activity-note">{item.note}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
