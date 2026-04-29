@@ -1,13 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 
-const STATUS_COLORS = {
-  new: { bg: 'rgba(55,138,221,0.1)', color: '#378add' },
-  in_review: { bg: 'rgba(239,159,39,0.1)', color: '#ef9f27' },
-  resolved: { bg: 'rgba(29,158,117,0.1)', color: '#1d9e75' },
-  closed: { bg: 'rgba(138,148,166,0.1)', color: '#8a94a6' },
-};
-
 const TYPE_COLORS = {
   'Injury': { bg: 'rgba(226,75,74,0.1)', color: '#e24b4a' },
   'Near Miss': { bg: 'rgba(239,159,39,0.1)', color: '#ef9f27' },
@@ -22,31 +15,58 @@ export default function Incidents({ user }) {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [workflowStages, setWorkflowStages] = useState([]);
 
   useEffect(() => {
     fetchIncidents();
+    fetchWorkflowStages();
   }, []);
 
   async function fetchIncidents() {
     setLoading(true);
     const { data, error } = await supabase
       .from('incidents')
-      .select('*')
+      .select(`
+        *,
+        workflow_stages (
+          id,
+          name,
+          color,
+          order_index
+        )
+      `)
       .order('created_at', { ascending: false });
 
     if (!error) setIncidents(data);
     setLoading(false);
   }
 
-  async function updateStatus(id, status) {
+  async function fetchWorkflowStages() {
+    const { data } = await supabase
+      .from('workflow_stages')
+      .select('*')
+      .order('order_index');
+    if (data) setWorkflowStages(data);
+  }
+
+  async function updateStatus(id, stageId, stageName) {
     const { error } = await supabase
       .from('incidents')
-      .update({ status })
+      .update({
+        current_stage_id: stageId,
+        status: stageName
+      })
       .eq('id', id);
 
     if (!error) {
-      setIncidents(prev => prev.map(i => i.id === id ? { ...i, status } : i));
-      if (selected?.id === id) setSelected(prev => ({ ...prev, status }));
+      setIncidents(prev => prev.map(i =>
+        i.id === id
+          ? { ...i, current_stage_id: stageId, status: stageName }
+          : i
+      ));
+      if (selected?.id === id) {
+        setSelected(prev => ({ ...prev, current_stage_id: stageId, status: stageName }));
+      }
     }
   }
 
@@ -55,6 +75,17 @@ export default function Incidents({ user }) {
     : incidents.filter(i => i.incident_type === filter);
 
   const types = [...new Set(incidents.map(i => i.incident_type).filter(Boolean))];
+
+  function getStageStyle(incident) {
+    const stage = workflowStages.find(s => s.id === incident.current_stage_id);
+    if (stage) return { bg: stage.color + '20', color: stage.color };
+    return { bg: 'rgba(55,138,221,0.1)', color: '#378add' };
+  }
+
+  function getStageName(incident) {
+    const stage = workflowStages.find(s => s.id === incident.current_stage_id);
+    return stage?.name || incident.status || 'New';
+  }
 
   if (loading) {
     return (
@@ -114,9 +145,9 @@ export default function Incidents({ user }) {
                   </span>
                   <span
                     className="incident-status-badge"
-                    style={STATUS_COLORS[incident.status] || STATUS_COLORS['new']}
+                    style={getStageStyle(incident)}
                   >
-                    {incident.status?.replace('_', ' ')}
+                    {getStageName(incident)}
                   </span>
                 </div>
                 <div className="incident-card-title">{incident.title}</div>
@@ -148,9 +179,9 @@ export default function Incidents({ user }) {
                 </span>
                 <span
                   className="incident-status-badge"
-                  style={STATUS_COLORS[selected.status] || STATUS_COLORS['new']}
+                  style={getStageStyle(selected)}
                 >
-                  {selected.status?.replace('_', ' ')}
+                  {getStageName(selected)}
                 </span>
                 {selected.is_osha_recordable && (
                   <span className="osha-badge">OSHA Recordable</span>
@@ -201,16 +232,20 @@ export default function Incidents({ user }) {
               )}
 
               <div className="detail-section">
-                <div className="detail-section-title">Update Status</div>
+                <div className="detail-section-title">Move to Stage</div>
                 <div className="status-buttons">
-                  {['new', 'in_review', 'resolved', 'closed'].map(s => (
+                  {workflowStages.map(stage => (
                     <button
-                      key={s}
-                      className={`status-btn ${selected.status === s ? 'active' : ''}`}
-                      style={selected.status === s ? STATUS_COLORS[s] : {}}
-                      onClick={() => updateStatus(selected.id, s)}
+                      key={stage.id}
+                      className={`status-btn ${selected.current_stage_id === stage.id ? 'active' : ''}`}
+                      style={selected.current_stage_id === stage.id ? {
+                        background: stage.color + '20',
+                        color: stage.color,
+                        borderColor: stage.color
+                      } : {}}
+                      onClick={() => updateStatus(selected.id, stage.id, stage.name)}
                     >
-                      {s.replace('_', ' ')}
+                      {stage.name}
                     </button>
                   ))}
                 </div>

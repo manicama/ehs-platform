@@ -1053,3 +1053,25 @@ input[type="date"] {
   color: #378add;
   background: rgba(55,138,221,0.04);
 }
+.workflow-banner {
+  background: rgba(55,138,221,0.06);
+  border: 1px solid rgba(55,138,221,0.15);
+  border-radius: 8px;
+  color: #378add;
+  font-size: 13px;
+  padding: 10px 16px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workflow-banner-icon { font-size: 14px; }
+.workflow-banner strong { color: #1a2035; }
+
+.workflow-banner-stage {
+  color: #8a94a6;
+  margin-left: 4px;
+}
+
+.workflow-banner-stage strong { color: #378add; }

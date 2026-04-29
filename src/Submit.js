@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 
 const INCIDENT_TYPES = [
@@ -14,6 +14,8 @@ export default function Submit({ user }) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [defaultWorkflow, setDefaultWorkflow] = useState(null);
+  const [firstStage, setFirstStage] = useState(null);
 
   const [form, setForm] = useState({
     title: '',
@@ -25,6 +27,30 @@ export default function Submit({ user }) {
     is_osha_recordable: false,
     is_dart: false,
   });
+
+  useEffect(() => {
+    fetchDefaultWorkflow();
+  }, []);
+
+  async function fetchDefaultWorkflow() {
+    const { data: workflow } = await supabase
+      .from('workflows')
+      .select('*')
+      .eq('is_default', true)
+      .single();
+
+    if (workflow) {
+      setDefaultWorkflow(workflow);
+      const { data: stages } = await supabase
+        .from('workflow_stages')
+        .select('*')
+        .eq('workflow_id', workflow.id)
+        .order('order_index')
+        .limit(1)
+        .single();
+      if (stages) setFirstStage(stages);
+    }
+  }
 
   function handleChange(e) {
     const { name, value, type, checked } = e.target;
@@ -44,7 +70,9 @@ export default function Submit({ user }) {
       .insert({
         ...form,
         reported_by: user.email,
-        status: 'new'
+        status: firstStage?.name || 'new',
+        workflow_id: defaultWorkflow?.id || null,
+        current_stage_id: firstStage?.id || null,
       });
 
     if (error) {
@@ -70,7 +98,7 @@ export default function Submit({ user }) {
       <div className="submit-success">
         <div className="success-icon">✓</div>
         <h2>Incident Reported</h2>
-        <p>Your incident has been submitted successfully and is now under review.</p>
+        <p>Your incident has been submitted and is now in the <strong>{firstStage?.name || 'New'}</strong> stage.</p>
         <button onClick={() => setSuccess(false)}>Submit Another</button>
       </div>
     );
@@ -83,8 +111,15 @@ export default function Submit({ user }) {
         <p>Complete the form below to submit a new incident report</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="incident-form">
+      {defaultWorkflow && (
+        <div className="workflow-banner">
+          <span className="workflow-banner-icon">⚡</span>
+          Using workflow: <strong>{defaultWorkflow.name}</strong>
+          {firstStage && <span className="workflow-banner-stage">→ Will start at <strong>{firstStage.name}</strong></span>}
+        </div>
+      )}
 
+      <form onSubmit={handleSubmit} className="incident-form">
         <div className="form-section">
           <div className="form-section-title">Basic Information</div>
           <div className="form-grid">
@@ -197,7 +232,6 @@ export default function Submit({ user }) {
             {loading ? 'Submitting...' : 'Submit Incident Report'}
           </button>
         </div>
-
       </form>
     </div>
   );
