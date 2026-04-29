@@ -3,12 +3,6 @@ import { supabase } from './supabase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
 import AIInsights from './AIInsights';
 
-function getPrefix(title, type) {
-  if (type === 'Near Miss') return 'near';
-  if (type === 'Injury') return 'inci';
-  return 'other';
-}
-
 function monthKey(dateStr) {
   if (!dateStr) return null;
   const d = new Date(dateStr);
@@ -28,14 +22,13 @@ export default function Dashboard({ user }) {
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [trendView, setTrendView] = useState('month');
-  const [ftEmployees, setFtEmployees] = useState('');
-  const [hoursPerMonth, setHoursPerMonth] = useState('');
-  const [configOpen, setConfigOpen] = useState(true);
+  const [settings, setSettings] = useState(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
   useEffect(() => {
     fetchIncidents();
+    fetchSettings();
   }, []);
 
   async function fetchIncidents() {
@@ -44,9 +37,17 @@ export default function Dashboard({ user }) {
       .from('incidents')
       .select('*')
       .order('occurred_at', { ascending: false });
-
     if (!error) setIncidents(data);
     setLoading(false);
+  }
+
+  async function fetchSettings() {
+    const { data } = await supabase
+      .from('settings')
+      .select('*')
+      .eq('user_email', user.email)
+      .single();
+    if (data) setSettings(data);
   }
 
   const filtered = incidents.filter(i => {
@@ -60,8 +61,8 @@ export default function Dashboard({ user }) {
   const nearMisses = filtered.filter(i => i.incident_type === 'Near Miss');
   const injuries = filtered.filter(i => i.incident_type === 'Injury');
 
-  const activeHeadcount = parseFloat(ftEmployees) || 100;
-  const monthlyHours = parseFloat(hoursPerMonth) || 167;
+  const activeHeadcount = settings?.employee_count || 100;
+  const monthlyHours = settings?.hours_per_month || 167;
   const months = dateFrom && dateTo
     ? Math.max(1, Math.round((new Date(dateTo) - new Date(dateFrom)) / (1000 * 60 * 60 * 24 * 30)))
     : 12;
@@ -116,46 +117,25 @@ export default function Dashboard({ user }) {
   return (
     <div className="dashboard-page">
 
-      <div className="config-panel">
-        <div className="config-header" onClick={() => setConfigOpen(!configOpen)}>
-          <div className="config-title">
-            <span className="config-icon">⚙</span>
-            Configuration
-          </div>
-          <span className="config-toggle">{configOpen ? '▲ Collapse' : '▼ Expand'}</span>
+      {settings && (
+        <div className="dashboard-settings-bar">
+          <span>
+            {settings.company_name && <strong>{settings.company_name}</strong>}
+            {settings.company_name && ' · '}
+            {activeHeadcount} employees · {monthlyHours} hrs/month
+          </span>
+          <a href="/settings" className="dashboard-settings-link">
+            Edit in Settings →
+          </a>
         </div>
-        {configOpen && (
-          <div className="config-body">
-            <div className="config-row">
-              <div className="control-group">
-                <label>Full Time Employees</label>
-                <input
-                  type="number"
-                  value={ftEmployees}
-                  onChange={e => setFtEmployees(e.target.value)}
-                  placeholder="Enter number"
-                  style={{width:'160px'}}
-                />
-              </div>
-              <div className="control-group">
-                <label>Hours Per Month</label>
-                <input
-                  type="number"
-                  value={hoursPerMonth}
-                  onChange={e => setHoursPerMonth(e.target.value)}
-                  placeholder="167"
-                  style={{width:'160px'}}
-                />
-              </div>
-              {(ftEmployees || hoursPerMonth) && (
-                <div className="config-total-hours">
-                  Total hours: <strong>{totalHours.toLocaleString()}</strong>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      )}
+
+      {!settings && (
+        <div className="dashboard-settings-banner">
+          Configure your workforce settings to calculate accurate TRIR and DART rates.
+          <a href="/settings" className="dashboard-settings-link">Go to Settings →</a>
+        </div>
+      )}
 
       <div className="dash-section-block">
         <div className="section-header">
@@ -290,7 +270,9 @@ export default function Dashboard({ user }) {
           </ResponsiveContainer>
         </div>
       </div>
+
       <AIInsights incidents={incidents} />
+
     </div>
   );
 }

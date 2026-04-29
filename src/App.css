@@ -1461,3 +1461,40 @@ input[type="date"] {
 
 .settings-save-btn:hover { background: #2970c4; }
 .settings-save-btn:disabled { background: #c8d0dc; cursor: not-allowed; }
+.dashboard-settings-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: #4a5568;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+
+.dashboard-settings-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(239,159,39,0.06);
+  border: 1px solid rgba(239,159,39,0.2);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: #4a5568;
+  margin-bottom: 16px;
+}
+
+.dashboard-settings-link {
+  font-size: 12px;
+  color: #378add;
+  text-decoration: none;
+  font-weight: 600;
+  white-space: nowrap;
+  margin-left: 16px;
+}
+
+.dashboard-settings-link:hover { text-decoration: underline; }
