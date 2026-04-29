@@ -1,60 +1,83 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 
-const INCIDENT_TYPES = [
-  'Injury',
-  'Near Miss',
-  'Property Damage',
-  'Environmental',
-  'Security',
-  'Other'
+const DEFAULT_FIELDS = [
+  { id: 'title', label: 'Incident Title', type: 'text', required: true, placeholder: 'Brief title describing what happened' },
+  { id: 'occurred_at', label: 'Date & Time', type: 'datetime-local', required: true },
+  { id: 'location', label: 'Location', type: 'text', required: true, placeholder: 'Where did this occur?' },
+  { id: 'description', label: 'Description', type: 'textarea', required: true, placeholder: 'Describe what happened in detail...' },
+  { id: 'immediate_action', label: 'Immediate Actions Taken', type: 'textarea', required: false, placeholder: 'What immediate actions were taken?' },
 ];
 
-export default function Submit({ user }) {
-  const [loading, setLoading] = useState(false);
+export default function Submit({ user, preselectedWorkflowId }) {
+  const [workflows, setWorkflows] = useState([]);
+  const [selectedWorkflow, setSelectedWorkflow] = useState(null);
+  const [submissionForm, setSubmissionForm] = useState(null);
+  const [submissionFields, setSubmissionFields] = useState([]);
+  const [firstStage, setFirstStage] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
-  const [defaultWorkflow, setDefaultWorkflow] = useState(null);
-  const [firstStage, setFirstStage] = useState(null);
-
-  const [form, setForm] = useState({
-    title: '',
-    incident_type: '',
-    occurred_at: '',
-    location: '',
-    description: '',
-    immediate_action: '',
-    is_osha_recordable: false,
-    is_dart: false,
-  });
+  const [formValues, setFormValues] = useState({});
+  const [customFieldValues, setCustomFieldValues] = useState({});
 
   useEffect(() => {
-    fetchDefaultWorkflow();
+    fetchWorkflows();
   }, []);
 
-  async function fetchDefaultWorkflow() {
-    const { data: workflow } = await supabase
+  useEffect(() => {
+    if (preselectedWorkflowId && workflows.length > 0) {
+      const wf = workflows.find(w => w.id === preselectedWorkflowId);
+      if (wf) selectWorkflow(wf);
+    }
+  }, [preselectedWorkflowId, workflows]);
+
+  async function fetchWorkflows() {
+    setLoading(true);
+    const { data } = await supabase
       .from('workflows')
       .select('*')
-      .eq('is_default', true)
-      .single();
+      .order('created_at');
+    if (data) setWorkflows(data);
+    setLoading(false);
+  }
 
-    if (workflow) {
-      setDefaultWorkflow(workflow);
-      const { data: stages } = await supabase
-        .from('workflow_stages')
+  async function selectWorkflow(workflow) {
+    setSelectedWorkflow(workflow);
+    setSubmissionForm(null);
+    setSubmissionFields([]);
+    setFormValues({});
+    setCustomFieldValues({});
+
+    const { data: stages } = await supabase
+      .from('workflow_stages')
+      .select('*')
+      .eq('workflow_id', workflow.id)
+      .order('order_index')
+      .limit(1)
+      .single();
+    if (stages) setFirstStage(stages);
+
+    if (workflow.submission_form_id) {
+      const { data: form } = await supabase
+        .from('forms')
         .select('*')
-        .eq('workflow_id', workflow.id)
-        .order('order_index')
-        .limit(1)
+        .eq('id', workflow.submission_form_id)
         .single();
-      if (stages) setFirstStage(stages);
+      const { data: fields } = await supabase
+        .from('form_fields')
+        .select('*')
+        .eq('form_id', workflow.submission_form_id)
+        .order('order_index');
+      if (form) setSubmissionForm(form);
+      if (fields) setSubmissionFields(fields);
     }
   }
 
-  function handleChange(e) {
+  function handleDefaultField(e) {
     const { name, value, type, checked } = e.target;
-    setForm(prev => ({
+    setFormValues(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
@@ -62,44 +85,160 @@ export default function Submit({ user }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    setLoading(true);
+    setSubmitting(true);
     setError('');
 
-    const { error } = await supabase
+    const { data: incident, error: incError } = await supabase
       .from('incidents')
       .insert({
-        ...form,
+        title: formValues.title || '',
+        description: formValues.description || '',
+        incident_type: selectedWorkflow.name,
+        occurred_at: formValues.occurred_at || new Date().toISOString(),
+        location: formValues.location || '',
+        immediate_action: formValues.immediate_action || '',
         reported_by: user.email,
-        status: firstStage?.name || 'new',
-        workflow_id: defaultWorkflow?.id || null,
+        status: firstStage?.name || 'New',
+        workflow_id: selectedWorkflow.id,
         current_stage_id: firstStage?.id || null,
-      });
+        is_osha_recordable: formValues.is_osha_recordable || false,
+        is_dart: formValues.is_dart || false,
+      })
+      .select()
+      .single();
 
-    if (error) {
-      setError(error.message);
-    } else {
-      setSuccess(true);
-      setForm({
-        title: '',
-        incident_type: '',
-        occurred_at: '',
-        location: '',
-        description: '',
-        immediate_action: '',
-        is_osha_recordable: false,
-        is_dart: false,
-      });
+    if (incError) {
+      setError(incError.message);
+      setSubmitting(false);
+      return;
     }
-    setLoading(false);
+
+    if (submissionForm && submissionFields.length > 0 && incident) {
+      const { data: response } = await supabase
+        .from('form_responses')
+        .insert({
+          incident_id: incident.id,
+          form_id: submissionForm.id,
+          submitted_by: user.email,
+          stage_id: firstStage?.id || null,
+        })
+        .select()
+        .single();
+
+      if (response) {
+        await supabase.from('form_field_responses').insert(
+          submissionFields.map(f => ({
+            response_id: response.id,
+            field_id: f.id,
+            value: customFieldValues[f.id] || '',
+          }))
+        );
+      }
+    }
+
+    setSuccess(true);
+    setSubmitting(false);
+  }
+
+  function renderCustomField(field) {
+    const value = customFieldValues[field.id] || '';
+    const props = {
+      value,
+      onChange: e => setCustomFieldValues(p => ({...p, [field.id]: e.target.value})),
+      placeholder: field.placeholder || '',
+      className: 'form-field-input',
+    };
+
+    switch (field.field_type) {
+      case 'textarea':
+        return <textarea {...props} rows={3} />;
+      case 'dropdown':
+        return (
+          <select {...props}>
+            <option value="">Select...</option>
+            {(field.options || '').split(',').map(o => o.trim()).filter(Boolean).map(o => (
+              <option key={o} value={o}>{o}</option>
+            ))}
+          </select>
+        );
+      case 'yes_no':
+        return (
+          <div className="yes-no-field">
+            {['Yes', 'No'].map(opt => (
+              <button
+                key={opt}
+                type="button"
+                className={`yes-no-btn ${value === opt ? 'active' : ''}`}
+                onClick={() => setCustomFieldValues(p => ({...p, [field.id]: opt}))}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        );
+      case 'date':
+        return <input {...props} type="date" />;
+      case 'number':
+        return <input {...props} type="number" />;
+      default:
+        return <input {...props} type="text" />;
+    }
+  }
+
+  if (loading) {
+    return <div className="incidents-loading"><div className="loading-spinner"></div></div>;
   }
 
   if (success) {
     return (
       <div className="submit-success">
         <div className="success-icon">✓</div>
-        <h2>Incident Reported</h2>
-        <p>Your incident has been submitted and is now in the <strong>{firstStage?.name || 'New'}</strong> stage.</p>
-        <button onClick={() => setSuccess(false)}>Submit Another</button>
+        <h2>Submitted Successfully</h2>
+        <p>
+          Your <strong>{selectedWorkflow?.name}</strong> has been submitted and is now in the{' '}
+          <strong>{firstStage?.name || 'New'}</strong> stage.
+        </p>
+        <button onClick={() => {
+          setSuccess(false);
+          setSelectedWorkflow(null);
+          setFormValues({});
+          setCustomFieldValues({});
+        }}>
+          Submit Another
+        </button>
+      </div>
+    );
+  }
+
+  if (!selectedWorkflow) {
+    return (
+      <div className="submit-page">
+        <div className="page-header">
+          <h2>New Submission</h2>
+          <p>Select the type of report you want to submit</p>
+        </div>
+        <div className="workflow-cards">
+          {workflows.map(workflow => {
+            const stageCount = 0;
+            return (
+              <div
+                key={workflow.id}
+                className="workflow-card"
+                onClick={() => selectWorkflow(workflow)}
+              >
+                <div className="workflow-card-icon">{workflow.icon || '📋'}</div>
+                <div className="workflow-card-name">{workflow.name}</div>
+                {workflow.description && (
+                  <div className="workflow-card-desc">{workflow.description}</div>
+                )}
+                {workflow.is_default && (
+                  <span className="workflow-card-badge">Default</span>
+                )}
+                <button className="workflow-card-btn">Select →</button>
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }
@@ -107,75 +246,65 @@ export default function Submit({ user }) {
   return (
     <div className="submit-page">
       <div className="page-header">
-        <h2>Report an Incident</h2>
-        <p>Complete the form below to submit a new incident report</p>
-      </div>
-
-      {defaultWorkflow && (
-        <div className="workflow-banner">
-          <span className="workflow-banner-icon">⚡</span>
-          Using workflow: <strong>{defaultWorkflow.name}</strong>
-          {firstStage && <span className="workflow-banner-stage">→ Will start at <strong>{firstStage.name}</strong></span>}
+        <button
+          className="back-btn"
+          onClick={() => { setSelectedWorkflow(null); setFormValues({}); setCustomFieldValues({}); }}
+        >
+          ← Back
+        </button>
+        <div>
+          <h2>
+            {selectedWorkflow.icon || '📋'} {selectedWorkflow.name}
+          </h2>
+          <p>
+            {selectedWorkflow.description || 'Complete the form below to submit'}
+            {firstStage && <span> · Will start at <strong>{firstStage.name}</strong></span>}
+          </p>
         </div>
-      )}
+      </div>
 
       <form onSubmit={handleSubmit} className="incident-form">
         <div className="form-section">
           <div className="form-section-title">Basic Information</div>
           <div className="form-grid">
             <div className="form-field full">
-              <label>Incident Title <span className="required">*</span></label>
+              <label>Title <span className="required">*</span></label>
               <input
                 name="title"
-                value={form.title}
-                onChange={handleChange}
-                placeholder="Brief title describing the incident"
+                value={formValues.title || ''}
+                onChange={handleDefaultField}
+                placeholder="Brief title describing what happened"
                 required
               />
             </div>
             <div className="form-field">
-              <label>Incident Type <span className="required">*</span></label>
-              <select name="incident_type" value={form.incident_type} onChange={handleChange} required>
-                <option value="">Select type...</option>
-                {INCIDENT_TYPES.map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-field">
-              <label>Date & Time of Incident <span className="required">*</span></label>
+              <label>Date & Time <span className="required">*</span></label>
               <input
                 type="datetime-local"
                 name="occurred_at"
-                value={form.occurred_at}
-                onChange={handleChange}
+                value={formValues.occurred_at || ''}
+                onChange={handleDefaultField}
                 required
               />
             </div>
-            <div className="form-field full">
+            <div className="form-field">
               <label>Location <span className="required">*</span></label>
               <input
                 name="location"
-                value={form.location}
-                onChange={handleChange}
+                value={formValues.location || ''}
+                onChange={handleDefaultField}
                 placeholder="Where did this occur?"
                 required
               />
             </div>
-          </div>
-        </div>
-
-        <div className="form-section">
-          <div className="form-section-title">Incident Details</div>
-          <div className="form-grid">
             <div className="form-field full">
               <label>Description <span className="required">*</span></label>
               <textarea
                 name="description"
-                value={form.description}
-                onChange={handleChange}
+                value={formValues.description || ''}
+                onChange={handleDefaultField}
                 placeholder="Describe what happened in detail..."
-                rows={5}
+                rows={4}
                 required
               />
             </div>
@@ -183,14 +312,31 @@ export default function Submit({ user }) {
               <label>Immediate Actions Taken</label>
               <textarea
                 name="immediate_action"
-                value={form.immediate_action}
-                onChange={handleChange}
-                placeholder="What immediate actions were taken after the incident?"
+                value={formValues.immediate_action || ''}
+                onChange={handleDefaultField}
+                placeholder="What immediate actions were taken?"
                 rows={3}
               />
             </div>
           </div>
         </div>
+
+        {submissionForm && submissionFields.length > 0 && (
+          <div className="form-section">
+            <div className="form-section-title">{submissionForm.name}</div>
+            <div className="form-grid">
+              {submissionFields.map(field => (
+                <div key={field.id} className={`form-field ${field.field_type === 'textarea' ? 'full' : ''}`}>
+                  <label>
+                    {field.label}
+                    {field.required && <span className="required"> *</span>}
+                  </label>
+                  {renderCustomField(field)}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="form-section">
           <div className="form-section-title">OSHA Classification</div>
@@ -199,8 +345,8 @@ export default function Submit({ user }) {
               <input
                 type="checkbox"
                 name="is_osha_recordable"
-                checked={form.is_osha_recordable}
-                onChange={handleChange}
+                checked={formValues.is_osha_recordable || false}
+                onChange={handleDefaultField}
               />
               <div className="check-content">
                 <span className="check-title">OSHA Recordable</span>
@@ -211,8 +357,8 @@ export default function Submit({ user }) {
               <input
                 type="checkbox"
                 name="is_dart"
-                checked={form.is_dart}
-                onChange={handleChange}
+                checked={formValues.is_dart || false}
+                onChange={handleDefaultField}
               />
               <div className="check-content">
                 <span className="check-title">DART Case</span>
@@ -228,8 +374,8 @@ export default function Submit({ user }) {
           <div className="form-reporter">
             Submitting as <strong>{user.email}</strong>
           </div>
-          <button type="submit" disabled={loading} className="submit-btn">
-            {loading ? 'Submitting...' : 'Submit Incident Report'}
+          <button type="submit" disabled={submitting} className="submit-btn">
+            {submitting ? 'Submitting...' : `Submit ${selectedWorkflow.name}`}
           </button>
         </div>
       </form>

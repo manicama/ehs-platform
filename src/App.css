@@ -2449,3 +2449,128 @@ input[type="date"] {
 
 .stage-check { font-size: 10px; }
 .stage-progress-arrow { color: #c8d0dc; font-size: 12px; }
+
+.workflow-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.workflow-card {
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 16px;
+  cursor: pointer;
+  padding: 24px;
+  text-align: center;
+  transition: all 0.2s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.workflow-card:hover {
+  border-color: #378add;
+  box-shadow: 0 4px 16px rgba(55,138,221,0.12);
+  transform: translateY(-2px);
+}
+
+.workflow-card-icon { font-size: 40px; }
+
+.workflow-card-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a2035;
+}
+
+.workflow-card-desc {
+  font-size: 13px;
+  color: #8a94a6;
+  line-height: 1.4;
+}
+
+.workflow-card-badge {
+  background: rgba(29,158,117,0.1);
+  color: #1d9e75;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  text-transform: uppercase;
+}
+
+.workflow-card-btn {
+  background: rgba(55,138,221,0.08);
+  border: 1px solid rgba(55,138,221,0.2);
+  border-radius: 8px;
+  color: #378add;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 8px;
+  padding: 8px 20px;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.workflow-card-btn:hover { background: rgba(55,138,221,0.15); }
+
+.back-btn {
+  background: none;
+  border: none;
+  color: #378add;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.back-btn:hover { opacity: 0.7; }
+
+.form-field-input {
+  background: #f8f9fb;
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: 8px;
+  color: #1a2035;
+  font-size: 14px;
+  font-family: inherit;
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100%;
+}
+
+.form-field-input:focus { border-color: #378add; }
+
+.icon-picker {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.icon-btn {
+  background: #f8f9fb;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 6px 10px;
+  transition: all 0.2s;
+}
+
+.icon-btn:hover { background: #f0f2f5; }
+.icon-btn.selected { background: rgba(55,138,221,0.1); border-color: #378add; }
+
+.workflow-submission-form-tag {
+  font-size: 12px;
+  color: #378add;
+  margin-top: 4px;
+}
+
+.workflow-meta-edit { display: flex; flex-direction: column; gap: 12px; }
+.workflow-meta-edit-row { display: flex; gap: 16px; flex-wrap: wrap; }
