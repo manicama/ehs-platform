@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
+import AIInsights from './AIInsights';
 
 function getPrefix(title, type) {
   if (type === 'Near Miss') return 'near';
@@ -289,7 +290,7 @@ export default function Dashboard({ user }) {
           </ResponsiveContainer>
         </div>
       </div>
-
+      <AIInsights incidents={incidents} />
     </div>
   );
 }
