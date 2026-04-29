@@ -32,12 +32,14 @@ Incident Data:
 ${JSON.stringify(summary, null, 2)}
 
 Please provide:
-1. **Key Trends** - What patterns do you see in the incident types, locations, or timing?
-2. **Risk Areas** - What areas or activities appear to be highest risk?
-3. **Recommendations** - What specific actions should the safety team take to prevent future incidents?
-4. **OSHA Compliance** - Any notes on recordable incidents and compliance considerations?
+1. Key Trends - What patterns do you see in the incident types, locations, or timing?
+2. Risk Areas - What areas or activities appear to be highest risk?
+3. Recommendations - What specific actions should the safety team take to prevent future incidents?
+4. OSHA Compliance - Any notes on recordable incidents and compliance considerations?
 
-Keep your response concise, practical, and actionable. Use bullet points where helpful.`;
+Important: Do not use markdown formatting like ## or ** in your response. Use plain text only. For section headers just write the title followed by a colon. For bullet points use a dash followed by a space.
+
+Keep your response concise, practical, and actionable.`;
 
     try {
       const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -47,7 +49,6 @@ Keep your response concise, practical, and actionable. Use bullet points where h
           'x-api-key': process.env.REACT_APP_ANTHROPIC_KEY,
           'anthropic-version': '2023-06-01',
           'anthropic-dangerous-direct-browser-access': 'true',
-      
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
@@ -72,21 +73,45 @@ Keep your response concise, practical, and actionable. Use bullet points where h
   }
 
   function formatInsights(text) {
-    return text.split('\n').map((line, i) => {
-      if (line.startsWith('**') && line.endsWith('**')) {
-        return <div key={i} className="ai-section-title">{line.replace(/\*\*/g, '')}</div>;
+    const lines = text.split('\n');
+    const elements = [];
+    let key = 0;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      if (!trimmed) {
+        elements.push(<div key={key++} className="ai-spacer" />);
+        continue;
       }
-      if (line.match(/^\*\*.*\*\*/)) {
-        return <div key={i} className="ai-bold-line" dangerouslySetInnerHTML={{
-          __html: line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        }} />;
+
+      if (trimmed.startsWith('- ') || trimmed.startsWith('• ')) {
+        elements.push(
+          <div key={key++} className="ai-bullet">
+            {trimmed.substring(2)}
+          </div>
+        );
+        continue;
       }
-      if (line.startsWith('- ') || line.startsWith('• ')) {
-        return <div key={i} className="ai-bullet">{line.substring(2)}</div>;
+
+      if (
+        (trimmed.match(/^\d+\.\s/) && trimmed.endsWith(':')) ||
+        (trimmed.endsWith(':') && trimmed.length < 40 && !trimmed.startsWith('-'))
+      ) {
+        elements.push(
+          <div key={key++} className="ai-section-title">
+            {trimmed.replace(/^\d+\.\s/, '')}
+          </div>
+        );
+        continue;
       }
-      if (line.trim() === '') return <div key={i} className="ai-spacer" />;
-      return <div key={i} className="ai-line">{line}</div>;
-    });
+
+      elements.push(
+        <div key={key++} className="ai-line">{trimmed}</div>
+      );
+    }
+
+    return elements;
   }
 
   return (

@@ -2,7 +2,6 @@
   "name": "frontline-safety-dashboard",
   "version": "0.1.0",
   "private": true,
-  "proxy": "https://ehsapi.fldata.com",
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",
     "@testing-library/dom": "^10.4.1",

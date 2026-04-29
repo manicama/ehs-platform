@@ -1308,3 +1308,10 @@ input[type="date"] {
   padding-top: 12px;
   border-top: 1px solid rgba(0,0,0,0.06);
 }
+.ai-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a2035;
+  margin-top: 8px;
+  padding: 2px 0;
+}
